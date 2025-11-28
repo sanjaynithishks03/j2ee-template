@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # Repository variables
-      JFROG_URL: ${{ vars.JF_URL }}
+      JFROG_URL: ${{ secrets.JF_URL }}
       JFROG_REPO: ${{ secrets.JFROG_REPO }}
       
     steps:
