@@ -57,6 +57,10 @@ jobs:
           cat .jfrog/projects/maven.yaml
           jf rt curl "/maven-remote/org/apache/maven/enforcer/enforcer/3.4.1/enforcer-3.4.1.pom"
           jf rt curl "/maven/org/apache/maven/enforcer/enforcer/3.4.1/enforcer-3.4.1.pom"
+
+          jf rt mvn clean install -P autoInstallPackage \
+          -Dmaven.wagon.http.ssl.insecure=true \
+          -Dmaven.wagon.http.ssl.allowall=true
       
       - name: Build (compile, test, package)
         # Clean build proves the template compiles, tests, and packages the WAR
