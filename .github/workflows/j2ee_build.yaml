@@ -57,8 +57,10 @@ jobs:
           cat .jfrog/projects/maven.yaml
           jf rt curl "/maven-remote/org/apache/maven/enforcer/enforcer/3.4.1/enforcer-3.4.1.pom"
           jf rt curl "/maven/org/apache/maven/enforcer/enforcer/3.4.1/enforcer-3.4.1.pom"
+          rm -rf ~/.m2/repository/commons-io/commons-io/2.6
+          rm -rf ~/.m2/repository/commons-io
 
-          jf mvn clean install -P autoInstallPackage \
+          jf mvn clean install \
           -Dmaven.wagon.http.ssl.insecure=true \
           -Dmaven.wagon.http.ssl.allowall=true
       
