@@ -1,0 +1,71 @@
+name: J2EE Build and Deploy
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # Repository variables
+      JFROG_URL: ${{ vars.JF_URL }}
+      JFROG_REPO: ${{ secrets.JFROG_REPO }}
+      
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+          cache: maven
+
+      - name: Setup JFrog CLI with token auth
+        uses: jfrog/setup-jfrog-cli@v4
+        with:
+          version: latest
+          custom-server-id: jf-server
+        env:
+          JF_URL: ${{ env.JFROG_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
+
+      - name: Configure Maven for Artifactory via JFrog CLI
+        run: |
+          # Configure the Maven settings using JFrog CLI default server
+          jf mvn-config \
+            --server-id-resolve=jf-server \
+            --server-id-deploy=jf-server \
+            --repo-resolve-releases="maven" \
+            --repo-deploy-releases="${{ env.JFROG_REPO }}" \
+            --repo-resolve-snapshots="maven" \
+            --repo-deploy-snapshots="${{ env.JFROG_REPO }}"
+      
+      - name: Test
+        # Clean build proves the template compiles, tests, and packages the WAR
+        run: |
+          cat ~/.m2/settings.xml
+          echo "***********"
+          cat .jfrog/projects/maven.yaml
+          jf rt curl "/maven-remote/org/apache/maven/enforcer/enforcer/3.4.1/enforcer-3.4.1.pom"
+          jf rt curl "/maven/org/apache/maven/enforcer/enforcer/3.4.1/enforcer-3.4.1.pom"
+      
+      - name: Build (compile, test, package)
+        # Clean build proves the template compiles, tests, and packages the WAR
+        run: jf mvn -B -U clean verify
+
+      - name: Deploy to JFrog Artifactory
+        run: |
+          set -euo pipefail
+          echo "Deploying to Artifactory at ${JFROG_URL}, repository ${JFROG_REPO}"
+          jf mvn -B -DskipTests \
+            -DaltDeploymentRepository=default::${{ env.JFROG_URL }}/artifactory/${{ env.JFROG_REPO }} \
+            deploy
