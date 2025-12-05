@@ -44,9 +44,9 @@ jobs:
           jf mvn-config \
             --server-id-resolve=jf-server \
             --server-id-deploy=jf-server \
-            --repo-resolve-releases="maven-virtual" \
+            --repo-resolve-releases="maven-test" \
             --repo-deploy-releases="${{ env.JFROG_REPO }}" \
-            --repo-resolve-snapshots="maven-virtual" \
+            --repo-resolve-snapshots="maven-test" \
             --repo-deploy-snapshots="${{ env.JFROG_REPO }}"
       
       - name: Test
@@ -55,8 +55,8 @@ jobs:
           cat ~/.m2/settings.xml
           echo "***********"
           cat .jfrog/projects/maven.yaml
-          jf rt curl "/maven-virtual/org/apache/maven/enforcer/enforcer/3.4.1/enforcer-3.4.1.pom"
-          jf rt curl "/maven-virtual/org/apache/maven/enforcer/enforcer/3.4.1/enforcer-3.4.1.pom"
+          jf rt curl "/maven-test/org/apache/maven/enforcer/enforcer/3.4.1/enforcer-3.4.1.pom"
+          jf rt curl "/maven-test/org/apache/maven/enforcer/enforcer/3.4.1/enforcer-3.4.1.pom"
           rm -rf ~/.m2/repository
 
           jf mvn clean install \
