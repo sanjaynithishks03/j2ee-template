@@ -49,19 +49,19 @@ jobs:
             --repo-resolve-snapshots="maven-test" \
             --repo-deploy-snapshots="${{ env.JFROG_REPO }}"
       
-      - name: Test
-        # Clean build proves the template compiles, tests, and packages the WAR
-        run: |
-          cat ~/.m2/settings.xml
-          echo "***********"
-          cat .jfrog/projects/maven.yaml
-          jf rt curl "/maven-test/org/apache/maven/enforcer/enforcer/3.4.1/enforcer-3.4.1.pom"
-          jf rt curl "/maven-test/org/apache/maven/enforcer/enforcer/3.4.1/enforcer-3.4.1.pom"
-          rm -rf ~/.m2/repository
+      # - name: Test
+      #   # Clean build proves the template compiles, tests, and packages the WAR
+      #   run: |
+      #     cat ~/.m2/settings.xml
+      #     echo "***********"
+      #     cat .jfrog/projects/maven.yaml
+      #     jf rt curl "/maven-test/org/apache/maven/enforcer/enforcer/3.4.1/enforcer-3.4.1.pom"
+      #     jf rt curl "/maven-test/org/apache/maven/enforcer/enforcer/3.4.1/enforcer-3.4.1.pom"
+      #     rm -rf ~/.m2/repository
 
-          jf mvn clean install \
-          -Dmaven.wagon.http.ssl.insecure=true \
-          -Dmaven.wagon.http.ssl.allowall=true
+      #     jf mvn clean install \
+      #     -Dmaven.wagon.http.ssl.insecure=true \
+      #     -Dmaven.wagon.http.ssl.allowall=true
       
       - name: Build (compile, test, package)
         # Clean build proves the template compiles, tests, and packages the WAR
