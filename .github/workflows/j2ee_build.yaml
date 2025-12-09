@@ -32,11 +32,10 @@ jobs:
       - name: Setup JFrog CLI with token auth
         uses: jfrog/setup-jfrog-cli@v4
         with:
-          version: latest
+          oidc-provider-name: github-test
           custom-server-id: jf-server
         env:
-          JF_URL: trial9oaaps.jfrog.io
-          JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
+          JF_URL: https://trial9oaaps.jfrog.io
 
       - name: Configure Maven for Artifactory via JFrog CLI
         run: |
