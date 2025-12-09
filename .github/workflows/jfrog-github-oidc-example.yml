@@ -15,9 +15,9 @@ jobs:
       - name: Setup JFrog CLI
         uses: jfrog/setup-jfrog-cli@v4
         env:
-          JF_URL: https://trial9oaaps.jfrog.io
+          JF_URL: https://trial9oaaps.jfrog.io 
         with:
-          oidc-provider-name: github
+          oidc-provider-name: github-test
 
       - name: Run JFrog CLI
         run: |
