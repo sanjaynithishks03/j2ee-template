@@ -192,30 +192,33 @@ jobs:
 
     - name: Download published artifact for attestation
       run: |
-        # Query JFrog to find the actual artifact
-        echo "Querying JFrog for recently published artifacts..."
+        # Construct the artifact path in JFrog
+        # Maven repository structure: groupId/artifactId/version/artifactId-version.{war,jar}
+        GROUP_ID=$(mvn help:evaluate -Dexpression=project.groupId -q -DforceStdout)
+        GROUP_PATH=$(echo "${GROUP_ID}" | tr '.' '/')
+        ARTIFACT_VERSION="${{ steps.artifact-info.outputs.artifact_version }}"
         
-        # Use AQL query to find the most recent artifact matching the build
-        ARTIFACT_INFO=$(jf rt curl -X POST "/api/search/aql" \
-          -d 'items.find({"repo": "${{ env.JFROG_REPO_NAME }}", "name": {"$match": "*.war"}, "$or": [{"stat.downloaded": {"$before": "1d"}}]}).include("name","repo","path").limit(1)' \
-          --silent)
+        # Construct correct Maven artifact path: groupId/artifactId/version/artifactId-version.war
+        JFROG_ARTIFACT_PATH="${{ env.JFROG_REPO_NAME }}/${GROUP_PATH}/${{ env.ARTIFACT_NAME }}/${ARTIFACT_VERSION}/${{ env.ARTIFACT_NAME }}-${ARTIFACT_VERSION}.${{ env.ARTIFACT_FILENAME ##*.}}"
         
-        ARTIFACT_PATH=$(echo "${ARTIFACT_INFO}" | jq -r '.results[0].repo + "/" + .results[0].path + "/" + .results[0].name' 2>/dev/null)
+        echo "Downloading published artifact from: ${JFROG_ARTIFACT_PATH}"
         
-        if [ -z "$ARTIFACT_PATH" ] || [ "$ARTIFACT_PATH" == "null" ]; then
-          echo "❌ Could not find artifact in JFrog"
-          exit 1
-        fi
-        
-        echo "Found artifact: ${ARTIFACT_PATH}"
-        jf rt download "${ARTIFACT_PATH}" . --flat
+        jf rt download "${JFROG_ARTIFACT_PATH}" . --flat
         
         if [ ! -f "${{ env.ARTIFACT_FILENAME }}" ]; then
-          echo "❌ Failed to download artifact"
+          echo "❌ Failed to download published artifact"
+          echo ""
+          echo "Expected artifact: ${{ env.ARTIFACT_FILENAME }}"
+          echo "Expected path: ${JFROG_ARTIFACT_PATH}"
+          echo ""
+          echo "Troubleshooting:"
+          echo "1. Verify the artifact was deployed in the 'Deploy to JFrog Artifactory' step"
+          echo "2. Check the actual path in JFrog UI: ${{ vars.ARTIFACTORY_URL }}/webapp/#/artifacts/browse/tree/General/${{ env.JFROG_REPO_NAME }}"
+          echo "3. Verify groupId, artifactId, and version in pom.xml"
           exit 1
         fi
         
-        echo "✓ Artifact downloaded successfully"
+        echo "✓ Published artifact downloaded for attestation"
         ls -lh ${{ env.ARTIFACT_FILENAME }}
 
     # - name: Download published artifact for attestation
