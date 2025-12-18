@@ -51,7 +51,7 @@ jobs:
         
       with:
         oidc-provider-name: github
-        id: jfrog-cli-server
+        custom-server-id: jfrog-cli-server
         
     - name: Test connection
       run: |
