@@ -192,24 +192,52 @@ jobs:
 
     - name: Download published artifact for attestation
       run: |
-        # Construct the artifact path in JFrog
-        # Maven repository structure: groupId/artifactId/version/artifactId-version.{war,jar}
-        GROUP_ID=$(mvn help:evaluate -Dexpression=project.groupId -q -DforceStdout)
-        GROUP_PATH=$(echo "${GROUP_ID}" | tr '.' '/')
+        # Query JFrog to find the actual artifact
+        echo "Querying JFrog for recently published artifacts..."
         
-        JFROG_ARTIFACT_PATH="${{ env.JFROG_REPO_NAME }}/${GROUP_PATH}/${{ env.ARTIFACT_NAME }}/${{ steps.artifact-info.outputs.artifact_version }}/${{ env.ARTIFACT_FILENAME }}"
+        # Use AQL query to find the most recent artifact matching the build
+        ARTIFACT_INFO=$(jf rt curl -X POST "/api/search/aql" \
+          -d 'items.find({"repo": "${{ env.JFROG_REPO_NAME }}", "name": {"$match": "*.war"}, "$or": [{"stat.downloaded": {"$before": "1d"}}]}).include("name","repo","path").limit(1)' \
+          --silent)
         
-        echo "Downloading published artifact from: ${JFROG_ARTIFACT_PATH}"
+        ARTIFACT_PATH=$(echo "${ARTIFACT_INFO}" | jq -r '.results[0].repo + "/" + .results[0].path + "/" + .results[0].name' 2>/dev/null)
         
-        jf rt download "${JFROG_ARTIFACT_PATH}" . --flat
-        
-        if [ ! -f "${{ env.ARTIFACT_FILENAME }}" ]; then
-          echo "❌ Failed to download published artifact"
+        if [ -z "$ARTIFACT_PATH" ] || [ "$ARTIFACT_PATH" == "null" ]; then
+          echo "❌ Could not find artifact in JFrog"
           exit 1
         fi
         
-        echo "✓ Published artifact downloaded for attestation"
+        echo "Found artifact: ${ARTIFACT_PATH}"
+        jf rt download "${ARTIFACT_PATH}" . --flat
+        
+        if [ ! -f "${{ env.ARTIFACT_FILENAME }}" ]; then
+          echo "❌ Failed to download artifact"
+          exit 1
+        fi
+        
+        echo "✓ Artifact downloaded successfully"
         ls -lh ${{ env.ARTIFACT_FILENAME }}
+
+    # - name: Download published artifact for attestation
+    #   run: |
+    #     # Construct the artifact path in JFrog
+    #     # Maven repository structure: groupId/artifactId/version/artifactId-version.{war,jar}
+    #     GROUP_ID=$(mvn help:evaluate -Dexpression=project.groupId -q -DforceStdout)
+    #     GROUP_PATH=$(echo "${GROUP_ID}" | tr '.' '/')
+        
+    #     JFROG_ARTIFACT_PATH="${{ env.JFROG_REPO_NAME }}/${GROUP_PATH}/${{ env.ARTIFACT_NAME }}/${{ steps.artifact-info.outputs.artifact_version }}/${{ env.ARTIFACT_FILENAME }}"
+        
+    #     echo "Downloading published artifact from: ${JFROG_ARTIFACT_PATH}"
+        
+    #     jf rt download "${JFROG_ARTIFACT_PATH}" . --flat
+        
+    #     if [ ! -f "${{ env.ARTIFACT_FILENAME }}" ]; then
+    #       echo "❌ Failed to download published artifact"
+    #       exit 1
+    #     fi
+        
+    #     echo "✓ Published artifact downloaded for attestation"
+    #     ls -lh ${{ env.ARTIFACT_FILENAME }}
 
     - name: Attest artifact with GitHub
       id: attest
