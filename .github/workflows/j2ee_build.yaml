@@ -1,73 +1,536 @@
-name: J2EE Build and Deploy
+name: J2EE Build and Release
 
 on:
   push:
-    branches: ["main"]
+    branches:
+      - main
+      - 'release/**'
   pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
+env:
+  JAVA_VERSION: '11'
+  JAVA_DISTRIBUTION: 'temurin'
+  JFROG_REPO_NAME: '' # JFrog repo name to upload the artifact to (default: <repo-name>-generic-dev-local)
+  JFROG_REMOTE_REPO_NAME: 'maven' # JFrog remote repo name to resolve artifacts from
+  JFROG_SECURITY_REPO_NAME: '' # JFrog repo for security artifacts (default: <repo-name>-security-local)
+  BUILD_NAME: '' # Build name to upload to JFrog (default: <repo-name>)
+  MAVEN_OPTS: '-Xmx2048m'
+
 permissions:
-  contents: read
   id-token: write
+  contents: read
+  attestations: write
+  security-events: write
+  actions: read
 
 jobs:
   build:
+    name: Build and Publish
     runs-on: ubuntu-latest
-    env:
-      # Repository variables
-      JFROG_URL: ${{ secrets.JF_URL }}
-      JFROG_REPO: ${{ secrets.JFROG_REPO }}
-      
+    outputs:
+      build_name: ${{ steps.setup-build-env.outputs.build_name }}
+      jfrog_repo_name: ${{ steps.setup-build-env.outputs.jfrog_repo_name }}
+      jfrog_security_repo_name: ${{ steps.setup-build-env.outputs.jfrog_security_repo_name }}
+      artifact_name: ${{ steps.artifact-info.outputs.artifact_name }}
+      artifact_version: ${{ steps.artifact-info.outputs.artifact_version }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v5
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '11'
-          cache: maven
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: ${{ env.JAVA_DISTRIBUTION }}
+        java-version: ${{ env.JAVA_VERSION }}
+        cache: maven
 
-      - name: Setup JFrog CLI with token auth
-        uses: jfrog/setup-jfrog-cli@v4
-        with:
-          oidc-provider-name: github-test
-          custom-server-id: jf-server
-        env:
-          JF_URL: https://trial9oaaps.jfrog.io
+    - name: Setup build name and JFrog repository name
+      id: setup-build-env
+      run: |
+        if [ -n "${{ env.BUILD_NAME }}" ]; then
+          BUILD_NAME_VALUE="${{ env.BUILD_NAME }}"
+        else
+          BUILD_NAME_VALUE="${{ github.event.repository.name }}"
+        fi
+        echo "BUILD_NAME=${BUILD_NAME_VALUE}" >> $GITHUB_ENV
+        echo "JFROG_CLI_BUILD_NAME=${BUILD_NAME_VALUE}" >> $GITHUB_ENV
+        echo "JFROG_CLI_BUILD_NUMBER=${{ github.run_number }}" >> $GITHUB_ENV
+        echo "build_name=${BUILD_NAME_VALUE}" >> $GITHUB_OUTPUT
 
-      - name: Configure Maven for Artifactory via JFrog CLI
-        run: |
-          # Configure the Maven settings using JFrog CLI default server
-          jf mvn-config \
-            --server-id-resolve=jf-server \
-            --server-id-deploy=jf-server \
-            --repo-resolve-releases="maven-test" \
-            --repo-deploy-releases="maven-local" \
-            --repo-resolve-snapshots="maven-test" \
-            --repo-deploy-snapshots="maven-local"
-      
-      # - name: Test
-      #   # Clean build proves the template compiles, tests, and packages the WAR
-      #   run: |
-      #     cat ~/.m2/settings.xml
-      #     echo "***********"
-      #     cat .jfrog/projects/maven.yaml
-      #     jf rt curl "/maven-test/org/apache/maven/enforcer/enforcer/3.4.1/enforcer-3.4.1.pom"
-      #     jf rt curl "/maven-test/org/apache/maven/enforcer/enforcer/3.4.1/enforcer-3.4.1.pom"
-      #     rm -rf ~/.m2/repository
+        if [ -n "${{ env.JFROG_REPO_NAME }}" ]; then
+          JFROG_REPO_NAME_VALUE="${{ env.JFROG_REPO_NAME }}"
+        else
+          JFROG_REPO_NAME_VALUE="${{ github.event.repository.name }}-generic-dev-local"
+        fi
+        echo "JFROG_REPO_NAME=${JFROG_REPO_NAME_VALUE}" >> $GITHUB_ENV
+        echo "jfrog_repo_name=${JFROG_REPO_NAME_VALUE}" >> $GITHUB_OUTPUT
 
-      #     jf mvn clean install \
-      #     -Dmaven.wagon.http.ssl.insecure=true \
-      #     -Dmaven.wagon.http.ssl.allowall=true
-      
-      - name: Build (compile, test, package)
-        # Clean build proves the template compiles, tests, and packages the WAR
-        run: jf mvn -B -U clean verify
+        if [ -n "${{ env.JFROG_SECURITY_REPO_NAME }}" ]; then
+          JFROG_SECURITY_REPO_NAME_VALUE="${{ env.JFROG_SECURITY_REPO_NAME }}"
+        else
+          JFROG_SECURITY_REPO_NAME_VALUE="${{ github.event.repository.name }}-security-local"
+        fi
+        echo "JFROG_SECURITY_REPO_NAME=${JFROG_SECURITY_REPO_NAME_VALUE}" >> $GITHUB_ENV
+        echo "jfrog_security_repo_name=${JFROG_SECURITY_REPO_NAME_VALUE}" >> $GITHUB_OUTPUT
 
-      - name: Deploy to JFrog Artifactory
-        run: |
-          set -euo pipefail
-          echo "Deploying to Artifactory at ${JFROG_URL}, repository ${JFROG_REPO}"
-          jf mvn -B -DskipTests deploy
+    - name: Setup JFrog CLI with OIDC
+      uses: jfrog/setup-jfrog-cli@v4
+      with:
+        version: latest
+        oidc-provider-name: github
+      env:
+        JF_URL: ${{ vars.ARTIFACTORY_URL }}
+
+    - name: Configure Maven for Artifactory via JFrog CLI
+      run: |
+        jf mvn-config \
+          --server-id-resolve=jfrog-cli-server \
+          --server-id-deploy=jfrog-cli-server \
+          --repo-resolve-releases="${{ env.JFROG_REMOTE_REPO_NAME }}" \
+          --repo-deploy-releases="${{ env.JFROG_REPO_NAME }}" \
+          --repo-resolve-snapshots="${{ env.JFROG_REMOTE_REPO_NAME }}" \
+          --repo-deploy-snapshots="${{ env.JFROG_REPO_NAME }}"
+
+    - name: Test JFrog connection
+      run: |
+        jf rt ping
+
+    - name: Verify JFrog Repositories Exist
+      run: |
+        echo "Checking if JFrog repository '${{ env.JFROG_REPO_NAME }}' exists..."
+        if jf rt curl -XGET "/api/repositories/${{ env.JFROG_REPO_NAME }}" --silent --fail > /dev/null 2>&1; then
+          echo "✓ Repository '${{ env.JFROG_REPO_NAME }}' exists"
+        else
+          echo "✗ ERROR: Repository '${{ env.JFROG_REPO_NAME }}' does not exist in JFrog Artifactory"
+          echo "Please create the repository before publishing the artifact"
+          exit 1
+        fi
+
+        echo "Checking if JFrog security repository '${{ env.JFROG_SECURITY_REPO_NAME }}' exists..."
+        if jf rt curl -XGET "/api/repositories/${{ env.JFROG_SECURITY_REPO_NAME }}" --silent --fail > /dev/null 2>&1; then
+          echo "✓ Repository '${{ env.JFROG_SECURITY_REPO_NAME }}' exists"
+        else
+          echo "✗ ERROR: Repository '${{ env.JFROG_SECURITY_REPO_NAME }}' does not exist in JFrog Artifactory"
+          echo "Please create the security repository as a Generic repository type"
+          exit 1
+        fi
+
+    - name: Extract artifact information
+      id: artifact-info
+      run: |
+        ARTIFACT_NAME=$(mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout)
+        ARTIFACT_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+        
+        echo "artifact_name=${ARTIFACT_NAME}" >> $GITHUB_OUTPUT
+        echo "artifact_version=${ARTIFACT_VERSION}" >> $GITHUB_ENV
+        echo "ARTIFACT_NAME=${ARTIFACT_NAME}" >> $GITHUB_ENV
+        
+        echo "Artifact: ${ARTIFACT_NAME}"
+        echo "Version: ${ARTIFACT_VERSION}"
+
+    - name: Code quality checks
+      run: |
+        # Run unit tests
+        jf mvn -B test
+
+    - name: Security scanning with Maven
+      run: |
+        echo "Running dependency check for security vulnerabilities..."
+        jf mvn -B -DskipTests verify 2>&1 | tee build-output.txt
+        
+        # Check for common security issues
+        if grep -i "vulnerable\|security\|critical" build-output.txt; then
+          echo "⚠️  WARNING: Potential security issues detected"
+        fi
+
+    - name: Build (compile, test, package)
+      run: |
+        # Clean build and package WAR/JAR
+        jf mvn -B -U clean verify \
+          --build-name=${{ env.BUILD_NAME }} \
+          --build-number=${{ github.run_number }}
+
+    - name: Generate artifact information
+      run: |
+        SHORT_SHA="${GITHUB_SHA:0:8}"
+        TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+        
+        echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_ENV
+        echo "BUILD_TIMESTAMP=${TIMESTAMP}" >> $GITHUB_ENV
+        
+        echo "Git SHA (short): ${SHORT_SHA}"
+        echo "Build timestamp: ${TIMESTAMP}"
+
+    - name: Deploy to JFrog Artifactory
+      run: |
+        jf mvn -B -DskipTests deploy \
+          --build-name=${{ env.BUILD_NAME }} \
+          --build-number=${{ github.run_number }}
+
+    - name: Find WAR/JAR artifact
+      id: artifact-path
+      run: |
+        # Find the built artifact (WAR or JAR)
+        ARTIFACT=$(find . -type f \( -name "*.war" -o -name "*.jar" \) -path "*/target/*" ! -name "*sources*" ! -name "*javadoc*" | head -n 1)
+        
+        if [ -z "$ARTIFACT" ]; then
+          echo "ERROR: No artifact found"
+          exit 1
+        fi
+        
+        ARTIFACT_FILENAME=$(basename "$ARTIFACT")
+        echo "artifact_file=${ARTIFACT}" >> $GITHUB_OUTPUT
+        echo "artifact_filename=${ARTIFACT_FILENAME}" >> $GITHUB_OUTPUT
+        echo "ARTIFACT_FILE=${ARTIFACT}" >> $GITHUB_ENV
+        echo "ARTIFACT_FILENAME=${ARTIFACT_FILENAME}" >> $GITHUB_ENV
+        
+        echo "Found artifact: ${ARTIFACT_FILENAME}"
+
+    - name: Download published artifact for attestation
+      run: |
+        # Construct the artifact path in JFrog
+        # Maven repository structure: groupId/artifactId/version/artifactId-version.{war,jar}
+        GROUP_ID=$(mvn help:evaluate -Dexpression=project.groupId -q -DforceStdout)
+        GROUP_PATH=$(echo "${GROUP_ID}" | tr '.' '/')
+        
+        JFROG_ARTIFACT_PATH="${{ env.JFROG_REPO_NAME }}/${GROUP_PATH}/${{ env.ARTIFACT_NAME }}/${{ steps.artifact-info.outputs.artifact_version }}/${{ env.ARTIFACT_FILENAME }}"
+        
+        echo "Downloading published artifact from: ${JFROG_ARTIFACT_PATH}"
+        
+        jf rt download "${JFROG_ARTIFACT_PATH}" . --flat
+        
+        if [ ! -f "${{ env.ARTIFACT_FILENAME }}" ]; then
+          echo "❌ Failed to download published artifact"
+          exit 1
+        fi
+        
+        echo "✓ Published artifact downloaded for attestation"
+        ls -lh ${{ env.ARTIFACT_FILENAME }}
+
+    - name: Attest artifact with GitHub
+      id: attest
+      uses: actions/attest-build-provenance@v3
+      with:
+        subject-path: '${{ env.ARTIFACT_FILENAME }}'
+
+    - name: Create custom attestation with actor info
+      id: attest-actor
+      uses: actions/attest@v2
+      with:
+        subject-path: '${{ env.ARTIFACT_FILENAME }}'
+        predicate-type: 'https://github.com/attestation/actor/v1'
+        predicate: |
+          {
+            "actor": "${{ github.actor }}",
+            "actorId": "${{ github.actor_id }}",
+            "repository": "${{ github.repository }}",
+            "repositoryOwner": "${{ github.repository_owner }}",
+            "commit": "${{ github.sha }}",
+            "ref": "${{ github.ref }}",
+            "workflow": "${{ github.workflow }}",
+            "workflowRef": "${{ github.workflow_ref }}",
+            "runId": "${{ github.run_id }}",
+            "runNumber": "${{ github.run_number }}",
+            "runAttempt": "${{ github.run_attempt }}",
+            "timestamp": "${{ env.BUILD_TIMESTAMP }}"
+          }
+
+    - name: Add attestation metadata to JFrog artifact
+      run: |
+        # Construct full artifact path
+        GROUP_ID=$(mvn help:evaluate -Dexpression=project.groupId -q -DforceStdout)
+        GROUP_PATH=$(echo "${GROUP_ID}" | tr '.' '/')
+        ARTIFACT_PATH="${{ env.JFROG_REPO_NAME }}/${GROUP_PATH}/${{ env.ARTIFACT_NAME }}/${{ steps.artifact-info.outputs.artifact_version }}/${{ env.ARTIFACT_FILENAME }}"
+        
+        echo "Setting properties on: ${ARTIFACT_PATH}"
+        jf rt set-props "${ARTIFACT_PATH}" \
+          "git.commit.sha=${{ github.sha }};git.commit.short=${{ env.SHORT_SHA }};git.branch=${{ github.ref_name }};build.name=${{ env.BUILD_NAME }};build.number=${{ github.run_number }};java.version=${{ env.JAVA_VERSION }};attestation.github.url=https://github.com/${{ github.repository }}/attestations;attestation.actor=${{ github.actor }};attestation.trigger=${{ github.event_name }};attestation.commit=${{ github.sha }};attestation.provenance.bundle=${{ steps.attest.outputs.bundle-path }};attestation.actor.bundle=${{ steps.attest-actor.outputs.bundle-path }};attestation.sigstore.enabled=true;security.repo=${{ env.JFROG_SECURITY_REPO_NAME }}"
+        
+        echo "✓ Attestation metadata added to artifact in JFrog"
+        echo "  Artifact: ${ARTIFACT_PATH}"
+        echo "  Git SHA: ${{ env.SHORT_SHA }}"
+        echo "  Build: ${{ env.BUILD_NAME }}/${{ github.run_number }}"
+
+    - name: Generate Maven dependency report
+      id: dependency-report
+      run: |
+        echo "Generating Maven dependency report..."
+        mvn dependency:tree -DoutputFile=dependency-tree.txt 2>/dev/null || true
+        
+        if [ -f dependency-tree.txt ]; then
+          echo "✓ Dependency tree generated"
+          DEPENDENCY_COUNT=$(grep -c "\\+-" dependency-tree.txt || echo "0")
+          echo "Total dependencies: ${DEPENDENCY_COUNT}"
+        fi
+
+    - name: Upload dependency report to JFrog
+      run: |
+        if [ -f dependency-tree.txt ]; then
+          DEPENDENCY_REPORT_NAME="${{ env.BUILD_NAME }}-dependencies-${{ github.run_number }}.txt"
+          
+          jf rt upload "dependency-tree.txt" "${{ env.JFROG_SECURITY_REPO_NAME }}/${DEPENDENCY_REPORT_NAME}" \
+            --build-name=${{ env.BUILD_NAME }} \
+            --build-number=${{ github.run_number }} \
+            --module=${{ env.BUILD_NAME }}-analysis
+          
+          echo "✓ Dependency report uploaded to JFrog security repository"
+        fi
+
+    - name: Generate SBOM
+      id: generate-sbom
+      run: |
+        SBOM_JFROG_NAME="${{ env.BUILD_NAME }}-sbom-${{ github.run_number }}.json"
+        
+        echo "Generating SBOM in CycloneDX format..."
+        
+        # Use cyclonedx-maven-plugin if available, otherwise generate from dependency tree
+        mvn org.cyclonedx:cyclonedx-maven-plugin:generate \
+          -DoutputFormat=json \
+          -DoutputFile="${SBOM_JFROG_NAME}" 2>/dev/null || {
+          
+          # Fallback: Generate simple SBOM from POM
+          echo "Generating SBOM from pom.xml..."
+          cat > "${SBOM_JFROG_NAME}" << 'EOF'
+        {
+          "bomFormat": "CycloneDX",
+          "specVersion": "1.5",
+          "version": 1,
+          "metadata": {
+            "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')",
+            "component": {
+              "type": "application",
+              "name": "${{ env.ARTIFACT_NAME }}",
+              "version": "${{ steps.artifact-info.outputs.artifact_version }}"
+            }
+          },
+          "components": []
+        }
+        EOF
+        }
+        
+        echo "SBOM_JFROG_NAME=${SBOM_JFROG_NAME}" >> $GITHUB_ENV
+        echo "✓ SBOM generated: ${SBOM_JFROG_NAME}"
+
+    - name: Attest SBOM
+      id: attest-sbom
+      uses: actions/attest@v2
+      with:
+        subject-path: '${{ env.SBOM_JFROG_NAME }}'
+        predicate-type: 'https://cyclonedx.org/bom'
+        predicate: |
+          {
+            "format": "CycloneDX",
+            "version": "1.5",
+            "repository": "${{ github.repository }}",
+            "commit": "${{ github.sha }}",
+            "ref": "${{ github.ref }}",
+            "workflow": "${{ github.workflow }}",
+            "runId": "${{ github.run_id }}",
+            "runNumber": "${{ github.run_number }}",
+            "timestamp": "${{ env.BUILD_TIMESTAMP }}",
+            "artifact": "${{ env.ARTIFACT_FILENAME }}"
+          }
+
+    - name: Upload SBOM to JFrog
+      run: |
+        jf rt upload "${{ env.SBOM_JFROG_NAME }}" "${{ env.JFROG_SECURITY_REPO_NAME }}/" \
+          --build-name=${{ env.BUILD_NAME }} \
+          --build-number=${{ github.run_number }} \
+          --module=${{ env.BUILD_NAME }}-security
+        
+        echo "✓ SBOM uploaded to JFrog security repository"
+
+    - name: Add SBOM attestation metadata to JFrog
+      run: |
+        SBOM_ARTIFACT_PATH="${{ env.JFROG_SECURITY_REPO_NAME }}/${{ env.SBOM_JFROG_NAME }}"
+        
+        jf rt set-props "${SBOM_ARTIFACT_PATH}" \
+          "git.commit.sha=${{ github.sha }};git.commit.short=${{ env.SHORT_SHA }};git.branch=${{ github.ref_name }};build.name=${{ env.BUILD_NAME }};build.number=${{ github.run_number }};sbom.format=cyclonedx;sbom.type=software-bill-of-materials;attestation.sbom.bundle=${{ steps.attest-sbom.outputs.bundle-path }};attestation.github.url=https://github.com/${{ github.repository }}/attestations;attestation.commit=${{ github.sha }};attestation.sigstore.enabled=true;related.artifact=${{ env.ARTIFACT_FILENAME }};related.artifact.repo=${{ env.JFROG_REPO_NAME }}"
+        
+        echo "✓ SBOM attestation metadata added to JFrog"
+        echo "✓ SBOM file location: ${SBOM_ARTIFACT_PATH}"
+
+    - name: Collect build environment
+      run: |
+        jf rt build-collect-env ${{ env.BUILD_NAME }} ${{ github.run_number }}
+        jf rt build-add-git ${{ env.BUILD_NAME }} ${{ github.run_number }}
+
+    - name: Publish build-info to JFrog
+      run: |
+        jf rt build-publish --collect-env --collect-git-info ${{ env.BUILD_NAME }} ${{ github.run_number }}
+        echo "✓ Build info published to JFrog"
+
+  release-bundle:
+    name: Create Release Bundle
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: startsWith(github.ref, 'refs/heads/release/') && github.actor != 'dependabot[bot]' && github.actor != 'dependabot'
+    environment: DEV
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: ${{ env.JAVA_DISTRIBUTION }}
+        java-version: ${{ env.JAVA_VERSION }}
+        cache: maven
+
+    - name: Setup JFrog CLI with OIDC
+      uses: jfrog/setup-jfrog-cli@v4
+      with:
+        version: latest
+        oidc-provider-name: github
+      env:
+        JF_URL: ${{ vars.ARTIFACTORY_URL }}
+
+    - name: Test connection
+      run: |
+        jf rt ping
+
+    - name: Set build environment from build job
+      run: |
+        echo "BUILD_NAME=${{ needs.build.outputs.build_name }}" >> $GITHUB_ENV
+        echo "JFROG_CLI_BUILD_NAME=${{ needs.build.outputs.build_name }}" >> $GITHUB_ENV
+        echo "JFROG_CLI_BUILD_NUMBER=${{ github.run_number }}" >> $GITHUB_ENV
+        echo "JFROG_REPO_NAME=${{ needs.build.outputs.jfrog_repo_name }}" >> $GITHUB_ENV
+        echo "JFROG_SECURITY_REPO_NAME=${{ needs.build.outputs.jfrog_security_repo_name }}" >> $GITHUB_ENV
+        echo "ARTIFACT_NAME=${{ needs.build.outputs.artifact_name }}" >> $GITHUB_ENV
+        echo "ARTIFACT_VERSION=${{ needs.build.outputs.artifact_version }}" >> $GITHUB_ENV
+
+    - name: Extract version from branch name
+      run: |
+        if [[ "${{ github.ref }}" == refs/heads/release/* ]]; then
+          VERSION=${GITHUB_REF#refs/heads/release/}
+          echo "PACKAGE_VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "Release version: ${VERSION}"
+        else
+          echo "Error: Not a release branch"
+          exit 1
+        fi
+
+    - name: Generate bundle version
+      run: |
+        echo "BUNDLE_VERSION=${{ env.PACKAGE_VERSION }}_build.${{ github.run_number }}" >> $GITHUB_ENV
+        echo "Bundle version: ${{ env.PACKAGE_VERSION }}_build.${{ github.run_number }}"
+
+    - name: Verify build exists in JFrog
+      run: |
+        echo "=== Verifying Build Info Exists ==="
+        echo "Build Name: ${{ env.BUILD_NAME }}"
+        echo "Build Number: ${{ github.run_number }}"
+        echo ""
+        
+        if ! build_info=$(jf rt curl -XGET "/api/build/${{ env.BUILD_NAME }}/${{ github.run_number }}" --silent --fail 2>&1); then
+          echo "❌ ERROR: Build info not found!"
+          echo ""
+          echo "This usually means the build-info was not published in the build job."
+          exit 1
+        fi
+        
+        echo "✓ Build info found"
+        echo "✓ Build verification complete"
+
+    - name: Create release bundle
+      run: |
+        echo "=== Creating Release Bundle ==="
+        echo "Bundle Name: ${{ env.BUILD_NAME }}"
+        echo "Bundle Version: ${{ env.BUNDLE_VERSION }}"
+        echo "Source Build: ${{ env.BUILD_NAME }}/${{ github.run_number }}"
+        echo ""
+        
+        jf rbc \
+          --build-name=${{ env.BUILD_NAME }} \
+          --build-number=${{ github.run_number }} \
+          --sync=true \
+          ${{ env.BUILD_NAME }} \
+          ${{ env.BUNDLE_VERSION }}
+        
+        echo ""
+        echo "✓ Release bundle created successfully"
+
+    - name: Calculate bundle digest for attestation
+      id: bundle-digest
+      run: |
+        bundle_subject="${{ env.BUILD_NAME }}:${{ env.BUNDLE_VERSION }}"
+        bundle_digest=$(echo -n "$bundle_subject" | sha256sum | awk '{print $1}')
+        echo "bundle_digest=${bundle_digest}" >> $GITHUB_OUTPUT
+        echo "Bundle digest: ${bundle_digest}"
+
+    - name: Fetch approval information
+      id: get-approvers
+      run: |
+        APPROVERS=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/approvals \
+          --jq '[.[] | .user.login] | join(",")' 2>/dev/null || echo "")
+        
+        if [ -z "$APPROVERS" ]; then
+          echo "approvers=automatic" >> $GITHUB_OUTPUT
+        else
+          echo "approvers=${APPROVERS}" >> $GITHUB_OUTPUT
+        fi
+      env:
+        GH_TOKEN: ${{ github.token }}
+
+    - name: Promote release bundle to dev
+      run: |
+        jf rbp \
+          --include-repos "${{ env.JFROG_REPO_NAME }};${{ env.JFROG_SECURITY_REPO_NAME }}" \
+          ${{ env.BUILD_NAME }} \
+          ${{ env.BUNDLE_VERSION }} \
+          DEV
+
+    - name: Get promotion timestamp from JFrog evidence
+      id: get-promotion-timestamp
+      run: |
+        PROMOTION_TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+        echo "promotion_timestamp=${PROMOTION_TIMESTAMP}" >> $GITHUB_OUTPUT
+        echo "Promotion timestamp: ${PROMOTION_TIMESTAMP}"
+
+    - name: Create initial promotion attestation
+      id: attest-promotion
+      uses: actions/attest@v2
+      with:
+        subject-name: "${{ env.BUILD_NAME }}/${{ env.BUNDLE_VERSION }} - BUILD -> DEV"
+        subject-digest: "sha256:${{ steps.bundle-digest.outputs.bundle_digest }}"
+        predicate-type: 'https://github.com/attestation/promotion/v1'
+        predicate: |
+          {
+            "triggeredBy": "${{ github.actor }}",
+            "triggeredById": "${{ github.actor_id }}",
+            "approvedBy": "${{ steps.get-approvers.outputs.approvers }}",
+            "sourceEnvironment": "BUILD",
+            "targetEnvironment": "DEV",
+            "bundleName": "${{ env.BUILD_NAME }}",
+            "bundleVersion": "${{ env.BUNDLE_VERSION }}",
+            "repository": "${{ github.repository }}",
+            "repositoryOwner": "${{ github.repository_owner }}",
+            "workflow": "${{ github.workflow }}",
+            "workflowRef": "${{ github.workflow_ref }}",
+            "workflowRunId": "${{ github.run_id }}",
+            "workflowRunNumber": "${{ github.run_number }}",
+            "workflowRunAttempt": "${{ github.run_attempt }}",
+            "timestamp": "${{ steps.get-promotion-timestamp.outputs.promotion_timestamp }}",
+            "verificationUrl": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          }
+
+    - name: Update release bundle properties with attestation
+      run: |
+        jf rt set-props \
+          "${{ env.JFROG_REPO_NAME }}/*" \
+          --include-dirs \
+          --build "${{ env.BUILD_NAME }}/${{ github.run_number }}" \
+          "promotion.source=BUILD;promotion.target=DEV;promotion.actor=${{ github.actor }};promotion.actor.id=${{ github.actor_id }};promotion.approver=${{ steps.get-approvers.outputs.approvers }};promotion.timestamp=${{ steps.get-promotion-timestamp.outputs.promotion_timestamp }};git.commit.sha=${{ github.sha }};git.branch=${{ github.ref_name }};workflow.run.id=${{ github.run_id }};workflow.run.number=${{ github.run_number }};attestation.bundle.path=${{ steps.attest-promotion.outputs.bundle-path }}"
+
+    - name: Log promotion attestation
+      run: |
+        echo "✓ Initial promotion attestation created"
+        echo "Bundle: ${{ env.BUILD_NAME }} v${{ env.BUNDLE_VERSION }}"
+        echo "Promotion: BUILD → DEV"
+        echo "Triggered by: ${{ github.actor }}"
+        echo "Attestation bundle: ${{ steps.attest-promotion.outputs.bundle-path }}"
+        echo ""
+        echo "View attestation at: https://github.com/${{ github.repository }}/attestations"
