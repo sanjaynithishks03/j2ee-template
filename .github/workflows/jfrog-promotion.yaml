@@ -48,8 +48,10 @@ jobs:
       uses: jfrog/setup-jfrog-cli@v4
       env:  
         JF_URL: ${{ vars.ARTIFACTORY_URL }}
+        
       with:
         oidc-provider-name: github
+        id: jfrog-cli-server
         
     - name: Test connection
       run: |

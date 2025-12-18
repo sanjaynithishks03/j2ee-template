@@ -81,6 +81,7 @@ jobs:
       with:
         version: latest
         oidc-provider-name: github
+        id: jfrog-cli-server
       env:
         JF_URL: ${{ vars.ARTIFACTORY_URL }}
 
