@@ -223,7 +223,18 @@ jobs:
           echo "Expected path: ${JFROG_ARTIFACT_PATH}"
           echo ""
           echo "Troubleshooting steps:"
-          echo ""
+          echo "1. Check JFrog UI: https://${{ vars.ARTIFACTORY_URL }}/webapp/#/artifacts/browse/tree/General/${{ env.JFROG_REPO_NAME }}"
+          echo "2. Verify pom.xml has correct groupId, artifactId, and version"
+          echo "3. Verify the 'Deploy to JFrog Artifactory' step succeeded"
+          echo "4. Check build logs for Maven deployment errors"
+          exit 1
+        fi
+        
+        # Save filename for use in attestation steps
+        echo "ARTIFACT_FILENAME=${DOWNLOADED_FILE}" >> $GITHUB_ENV
+        
+        echo "✓ Published artifact downloaded successfully"
+        ls -lh "${DOWNLOADED_FILE}"
 
     # - name: Download published artifact for attestation
     #   run: |
