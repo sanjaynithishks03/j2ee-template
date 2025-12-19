@@ -125,7 +125,7 @@ jobs:
 
     - name: Get current stage of the release bundle
       run: |
-        output=$(jf rt curl -XGET /api/v2/promotion/records/${{ env.RELEASE_BUNDLE_NAME }}/${{ inputs.release_bundle_version }} --silent --fail)
+        output=$(jf rt curl -XGET /api/v2/promotion/records/${{ env.RELEASE_BUNDLE_NAME }}/${{ env.RELEASE_BUNDLE_VERSION }} --silent --fail)
         stage=$(echo $output | jq -r '.["promotions"].[] | select(.status == "COMPLETED") | .stage' | head -n 1)
         echo "Current stage of the release bundle: $stage"
 
@@ -138,6 +138,7 @@ jobs:
           exit 1
         fi
         
+        # Store source stage for attestation verification
         echo "SOURCE_STAGE=$stage" >> $GITHUB_ENV
 
     - name: Verify attestation exists before promotion
@@ -202,11 +203,36 @@ jobs:
 
     - name: Promote release bundle to ${{ inputs.target_env }}
       run: |
+        echo "=== Promoting Release Bundle ==="
+        echo "Bundle: ${{ env.RELEASE_BUNDLE_NAME }}"
+        echo "Version: ${{ inputs.release_bundle_version }}"
+        echo "From: ${{ env.SOURCE_STAGE }}"
+        echo "To: ${{ inputs.target_env }}"
+        echo ""
+        
+        # Promote release bundle to target environment
+        # promotion-type: copy (default) - copies artifacts to target repos
+        # promotion-type: move - moves artifacts to target repos
         jf rbp \
-          --include-repos "${{ env.JFROG_REPO_NAME }};${{ env.JFROG_SECURITY_REPO_NAME }}" \
+          --include-repos "${{ env.JFROG_REPO_NAME }}" \
+          --promotion-type=copy \
           ${{ env.RELEASE_BUNDLE_NAME }} \
           ${{ inputs.release_bundle_version }} \
           ${{ inputs.target_env }}
+        
+        PROMOTION_RESULT=$?
+        
+        if [ $PROMOTION_RESULT -eq 0 ]; then
+          echo ""
+          echo "✓ Release bundle promoted successfully"
+          echo "  Bundle: ${{ env.RELEASE_BUNDLE_NAME }}"
+          echo "  Version: ${{ inputs.release_bundle_version }}"
+          echo "  Target: ${{ inputs.target_env }}"
+          echo "  Promotion Type: copy"
+        else
+          echo "❌ Promotion failed with exit code: $PROMOTION_RESULT"
+          exit 1
+        fi
 
     - name: Get promotion timestamp from JFrog evidence
       id: get-promotion-timestamp
