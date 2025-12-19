@@ -301,6 +301,94 @@ jobs:
         echo "  Git SHA: ${{ env.SHORT_SHA }}"
         echo "  Build: ${{ env.BUILD_NAME }}/${{ github.run_number }}"
 
+    - name: Add attestation metadata to JFrog artifact
+      run: |
+        # Add properties to the uploaded artifact in JFrog (using npm publish path structure)
+        GROUP_ID=$(mvn help:evaluate -Dexpression=project.groupId -q -DforceStdout)
+        GROUP_PATH=$(echo "${GROUP_ID}" | tr '.' '/')
+        ARTIFACT_PATH="${{ env.JFROG_REPO_NAME }}/${GROUP_PATH}/${{ env.ARTIFACT_NAME }}/${{ steps.artifact-info.outputs.artifact_version }}/${{ env.ARTIFACT_FILENAME }}"
+        
+        echo "Setting properties on: ${ARTIFACT_PATH}"
+        jf rt set-props "${ARTIFACT_PATH}" \
+          "git.commit.sha=${{ github.sha }};git.commit.short=${{ env.SHORT_SHA }};git.branch=${{ github.ref_name }};build.name=${{ env.BUILD_NAME }};build.number=${{ github.run_number }};attestation.github.url=https://github.com/${{ github.repository }}/attestations;attestation.actor=${{ github.actor }};attestation.trigger=${{ github.event_name }};attestation.commit=${{ github.sha }};attestation.provenance.bundle=${{ steps.attest.outputs.bundle-path }};attestation.actor.bundle=${{ steps.attest-actor.outputs.bundle-path }};attestation.sigstore.enabled=true;security.repo=${{ env.JFROG_SECURITY_REPO_NAME }}"
+        
+        echo "✓ Attestation metadata added to artifact in JFrog"
+        echo "  Artifact: ${ARTIFACT_PATH}"
+        echo "  Git SHA: ${{ env.SHORT_SHA }}"
+        echo "  Build: ${{ env.BUILD_NAME }}/${{ github.run_number }}"
+
+    - name: Find CodeQL SARIF results
+      id: sarif-info
+      run: |
+        SARIF_FILE=$(find codeql-results -name "*.sarif" -type f | head -n 1)
+        if [ -z "$SARIF_FILE" ]; then
+          echo "Error: No SARIF file found"
+          exit 1
+        fi
+        echo "SARIF_FILE=$SARIF_FILE" >> $GITHUB_ENV
+        echo "Found SARIF file: $SARIF_FILE"
+        
+        # Generate SARIF filename for JFrog (using build number for uniqueness)
+        SARIF_JFROG_NAME="${{ env.BUILD_NAME }}-codeql-${{ github.run_number }}.sarif"
+        echo "SARIF_JFROG_NAME=$SARIF_JFROG_NAME" >> $GITHUB_ENV
+        echo "JFrog SARIF name: $SARIF_JFROG_NAME"
+
+    - name: Attest CodeQL SARIF results
+      id: attest-codeql
+      uses: actions/attest@v2
+      with:
+        subject-path: '${{ env.SARIF_FILE }}'
+        predicate-type: 'https://github.com/attestation/codeql/v1'
+        predicate: |
+          {
+            "scanType": "codeql",
+            "language": "javascript",
+            "queries": "security-and-quality",
+            "repository": "${{ github.repository }}",
+            "commit": "${{ github.sha }}",
+            "ref": "${{ github.ref }}",
+            "workflow": "${{ github.workflow }}",
+            "runId": "${{ github.run_id }}",
+            "runNumber": "${{ github.run_number }}",
+            "timestamp": "${{ github.event.head_commit.timestamp }}",
+            "resultsFile": "${{ env.SARIF_FILE }}"
+          }
+
+    - name: Upload CodeQL SARIF to JFrog
+      run: |
+        cp "${{ env.SARIF_FILE }}" "${{ env.SARIF_JFROG_NAME }}"
+        
+        jf rt upload "${{ env.SARIF_JFROG_NAME }}" "${{ env.JFROG_SECURITY_REPO_NAME }}/" \
+          --build-name=${{ env.BUILD_NAME }} \
+          --build-number=${{ github.run_number }} \
+          --module=${{ env.BUILD_NAME }}-security
+        
+        echo "✓ CodeQL SARIF uploaded to JFrog security repository"
+
+    - name: Add CodeQL attestation metadata to SARIF in JFrog
+      run: |
+        SARIF_ARTIFACT_PATH="${{ env.JFROG_SECURITY_REPO_NAME }}/${{ env.SARIF_JFROG_NAME }}"
+        
+        jf rt set-props "${SARIF_ARTIFACT_PATH}" \
+          "git.commit.sha=${{ github.sha }};git.commit.short=${{ env.SHORT_SHA }};git.branch=${{ github.ref_name }};build.name=${{ env.BUILD_NAME }};build.number=${{ github.run_number }};scan.type=codeql;scan.language=javascript;attestation.codeql.bundle=${{ steps.attest-codeql.outputs.bundle-path }};attestation.github.url=https://github.com/${{ github.repository }}/attestations;attestation.commit=${{ github.sha }};attestation.sigstore.enabled=true;related.artifact=${{ env.TARBALL_PATH }};related.package.repo=${{ env.JFROG_REPO_NAME }}"
+        
+        echo "✓ CodeQL attestation metadata added to SARIF in JFrog"
+        echo "✓ SARIF file location: ${SARIF_ARTIFACT_PATH}"
+
+    - name: Link package to SARIF security artifact
+      run: |
+        # Add bidirectional link from package to its SARIF file
+        GROUP_ID=$(mvn help:evaluate -Dexpression=project.groupId -q -DforceStdout)
+        GROUP_PATH=$(echo "${GROUP_ID}" | tr '.' '/')
+        ARTIFACT_PATH="${{ env.JFROG_REPO_NAME }}/${GROUP_PATH}/${{ env.ARTIFACT_NAME }}/${{ steps.artifact-info.outputs.artifact_version }}/${{ env.ARTIFACT_FILENAME }}"
+        
+        jf rt set-props "${ARTIFACT_PATH}" \
+          "security.sarif.file=${{ env.SARIF_JFROG_NAME }};security.sarif.path=${{ env.JFROG_SECURITY_REPO_NAME }}/${{ env.SARIF_JFROG_NAME }};security.scan.type=codeql;security.scan.language=javascript;security.scan.attestation=${{ steps.attest-codeql.outputs.bundle-path }}"
+        
+        echo "✓ Package linked to SARIF security artifact"
+        echo "✓ Package: ${ARTIFACT_PATH}"
+        echo "✓ SARIF: ${{ env.JFROG_SECURITY_REPO_NAME }}/${{ env.SARIF_JFROG_NAME }}"
+
     - name: Generate Maven dependency report
       id: dependency-report
       run: |
@@ -525,7 +613,7 @@ jobs:
     - name: Promote release bundle to dev
       run: |
         jf rbp \
-          --include-repos "${{ env.JFROG_REPO_NAME }};${{ env.JFROG_SECURITY_REPO_NAME }}" \
+          --include-repos "${{ env.JFROG_REPO_NAME }} \
           ${{ env.BUILD_NAME }} \
           ${{ env.BUNDLE_VERSION }} \
           DEV
