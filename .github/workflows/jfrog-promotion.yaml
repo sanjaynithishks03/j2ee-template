@@ -214,7 +214,7 @@ jobs:
         # promotion-type: copy (default) - copies artifacts to target repos
         # promotion-type: move - moves artifacts to target repos
         jf rbp \
-          --include-repos "${{ env.JFROG_REPO_NAME }} \
+          --include-repos "${{ env.JFROG_REPO_NAME }}" \
           --promotion-type=copy \
           ${{ env.RELEASE_BUNDLE_NAME }} \
           ${{ inputs.release_bundle_version }} \
