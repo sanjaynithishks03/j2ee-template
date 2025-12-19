@@ -203,11 +203,32 @@ jobs:
 
     - name: Promote release bundle to ${{ inputs.target_env }}
       run: |
+        echo "=== Promoting Release Bundle ==="
+        echo "Bundle: ${{ env.RELEASE_BUNDLE_NAME }}"
+        echo "Version: ${{ inputs.release_bundle_version }}"
+        echo "From: ${{ env.SOURCE_STAGE }}"
+        echo "To: ${{ inputs.target_env }}"
+        echo ""
+        
+        # Promote with copy flag to handle existing artifacts
+        # The --copy flag will overwrite existing artifacts in the target repository
         jf rbp \
           --include-repos "${{ env.JFROG_REPO_NAME }};${{ env.JFROG_SECURITY_REPO_NAME }}" \
+          --copy \
           ${{ env.RELEASE_BUNDLE_NAME }} \
           ${{ inputs.release_bundle_version }} \
           ${{ inputs.target_env }}
+        
+        if [ $? -eq 0 ]; then
+          echo ""
+          echo "✓ Release bundle promoted successfully"
+          echo "  Bundle: ${{ env.RELEASE_BUNDLE_NAME }}"
+          echo "  Version: ${{ inputs.release_bundle_version }}"
+          echo "  Target: ${{ inputs.target_env }}"
+        else
+          echo "❌ Promotion failed"
+          exit 1
+        fi
 
     - name: Get promotion timestamp from JFrog evidence
       id: get-promotion-timestamp
