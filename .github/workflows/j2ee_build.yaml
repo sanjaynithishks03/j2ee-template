@@ -384,9 +384,12 @@ jobs:
     - name: Add CodeQL attestation metadata to SARIF in JFrog
       run: |
         SARIF_ARTIFACT_PATH="${{ env.JFROG_SECURITY_REPO_NAME }}/${{ env.SARIF_JFROG_NAME }}"
+
+        ARTIFACT_ID=$(mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout)
+        ARTIFACT_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
         
         jf rt set-props "${SARIF_ARTIFACT_PATH}" \
-          "git.commit.sha=${{ github.sha }};git.commit.short=${{ env.SHORT_SHA }};git.branch=${{ github.ref_name }};build.name=${{ env.BUILD_NAME }};build.number=${{ github.run_number }};scan.type=codeql;scan.language=javascript;attestation.codeql.bundle=${{ steps.attest-codeql.outputs.bundle-path }};attestation.github.url=https://github.com/${{ github.repository }}/attestations;attestation.commit=${{ github.sha }};attestation.sigstore.enabled=true;related.artifact=${{ env.ARTIFACT_FILENAME }};related.package.repo=${{ env.JFROG_REPO_NAME }}"
+          "git.commit.sha=${{ github.sha }};git.commit.short=${{ env.SHORT_SHA }};git.branch=${{ github.ref_name }};build.name=${{ env.BUILD_NAME }};build.number=${{ github.run_number }};scan.type=codeql;scan.language=javascript;attestation.codeql.bundle=${{ steps.attest-codeql.outputs.bundle-path }};attestation.github.url=https://github.com/${{ github.repository }}/attestations;attestation.commit=${{ github.sha }};attestation.sigstore.enabled=true;related.artifact=${ARTIFACT_ID}-${ARTIFACT_VERSION};related.package.repo=${{ env.JFROG_REPO_NAME }}"
         
         echo "✓ CodeQL attestation metadata added to SARIF in JFrog"
         echo "✓ SARIF file location: ${SARIF_ARTIFACT_PATH}"
@@ -396,7 +399,9 @@ jobs:
         # Add bidirectional link from package to its SARIF file
         GROUP_ID=$(mvn help:evaluate -Dexpression=project.groupId -q -DforceStdout)
         GROUP_PATH=$(echo "${GROUP_ID}" | tr '.' '/')
-        ARTIFACT_PATH="${{ env.JFROG_REPO_NAME }}/${GROUP_PATH}/${{ env.ARTIFACT_NAME }}/${{ steps.artifact-info.outputs.artifact_version }}/${{ env.ARTIFACT_FILENAME }}"
+        ARTIFACT_ID=$(mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout)
+        ARTIFACT_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+        ARTIFACT_PATH="${{ env.JFROG_REPO_NAME }}/${GROUP_PATH}/${{ env.ARTIFACT_NAME }}/${{ steps.artifact-info.outputs.artifact_version }}/${ARTIFACT_ID}-${ARTIFACT_VERSION}.war"
         
         jf rt set-props "${ARTIFACT_PATH}" \
           "security.sarif.file=${{ env.SARIF_JFROG_NAME }};security.sarif.path=${{ env.JFROG_SECURITY_REPO_NAME }}/${{ env.SARIF_JFROG_NAME }};security.scan.type=codeql;security.scan.language=javascript;security.scan.attestation=${{ steps.attest-codeql.outputs.bundle-path }}"
