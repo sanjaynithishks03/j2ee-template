@@ -125,54 +125,20 @@ jobs:
 
     - name: Get current stage of the release bundle
       run: |
-        echo "=== Checking Release Bundle Promotion History ==="
-        echo "Bundle: ${{ env.RELEASE_BUNDLE_NAME }}"
-        echo "Version: ${{ inputs.release_bundle_version }}"
-        echo ""
-        
-        # Fetch promotion records
-        output=$(jf rt curl -XGET /api/v2/promotion/records/${{ env.RELEASE_BUNDLE_NAME }}/${{ inputs.release_bundle_version }} --silent --fail 2>&1)
-        
-        # Debug: Show raw response
-        echo "API Response:"
-        echo "$output" | jq '.' 2>/dev/null || echo "$output"
-        echo ""
-        
-        # Extract the current stage from completed promotions
-        stage=$(echo "$output" | jq -r '.promotions[]? | select(.status == "COMPLETED") | .stage' 2>/dev/null | tail -n 1)
-        
-        # If no stage found, this is the first promotion (from BUILD)
-        if [ -z "$stage" ] || [ "$stage" == "null" ]; then
-          echo "ℹ️  No completed promotions found - this is the first promotion"
-          stage="BUILD"
-        fi
-        
-        echo "Current stage: ${stage}"
-        
-        # Define valid promotion path
-        declare -A valid_path=(["DEV"]="QA" ["QA"]="UAT" ["UAT"]="PROD" )
+        output=$(jf rt curl -XGET /api/v2/promotion/records/${{ env.RELEASE_BUNDLE_NAME }}/${{ env.RELEASE_BUNDLE_VERSION }} --silent --fail)
+        stage=$(echo $output | jq -r '.["promotions"].[] | select(.status == "COMPLETED") | .stage' | head -n 1)
+        echo "Current stage of the release bundle: $stage"
+
+        declare -A valid_path=( ["DEV"]="QA" ["QA"]="UAT" ["UAT"]="PROD" )
         next_stage="${valid_path[$stage]}"
-        
-        # Validate promotion path
-        if [ -z "$next_stage" ]; then
-          echo "❌ ERROR: Unknown current stage '$stage'"
-          echo "Valid stages: DEV, QA, UAT, PROD"
-          exit 1
-        fi
-        
         if [ "$next_stage" == "${{ inputs.target_env }}" ]; then
-          echo "✓ Valid promotion path: $stage → $next_stage"
+          echo "Promoting from $stage to $next_stage"
         else
-          echo "❌ ERROR: Cannot promote from $stage to ${{ inputs.target_env }}"
-          echo "   Expected next stage: $next_stage"
-          echo ""
-          echo "Valid promotion paths:"
-          echo "  DEV → QA"
-          echo "  QA → UAT"
-          echo "  UAT → PROD"
+          echo "Cannot promote from $stage to ${{ inputs.target_env }} as it is not a valid promotion path"
           exit 1
         fi
         
+        # Store source stage for attestation verification
         echo "SOURCE_STAGE=$stage" >> $GITHUB_ENV
 
     - name: Verify attestation exists before promotion
