@@ -400,7 +400,7 @@ jobs:
     - name: Generate SBOM
       id: generate-sbom
       run: |
-        SBOM_JFROG_NAME="${{ env.BUILD_NAME }}-sbom-${{ github.run_number }}.json"
+        SBOM_JFROG_NAME="${{ env.BUILD_NAME }}-sbom-${{ github.run_number }}"
         
         echo "Generating SBOM in CycloneDX format..."
         
@@ -436,7 +436,7 @@ jobs:
       id: attest-sbom
       uses: actions/attest@v2
       with:
-        subject-path: 
+        subject-path: "${{ env.SBOM_JFROG_NAME }}.json"
         predicate-type: 'https://cyclonedx.org/bom'
         predicate: |
           {
