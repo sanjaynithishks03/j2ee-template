@@ -598,7 +598,7 @@ jobs:
     - name: Promote release bundle to dev
       run: |
         jf rbp \
-          --include-repos "${{ env.JFROG_REPO_NAME }} \
+          --include-repos "${{ env.JFROG_REPO_NAME }}" \
           ${{ env.BUILD_NAME }} \
           ${{ env.BUNDLE_VERSION }} \
           DEV
