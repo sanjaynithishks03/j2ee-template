@@ -401,7 +401,7 @@ jobs:
         GROUP_PATH=$(echo "${GROUP_ID}" | tr '.' '/')
         ARTIFACT_ID=$(mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout)
         ARTIFACT_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
-        ARTIFACT_PATH="${{ env.JFROG_REPO_NAME }}/${GROUP_PATH}/${{ env.ARTIFACT_NAME }}/${{ steps.artifact-info.outputs.artifact_version }}/${ARTIFACT_ID}-${ARTIFACT_VERSION}.war"
+        ARTIFACT_PATH="${{ env.JFROG_REPO_NAME }}/${GROUP_PATH}/${{ env.ARTIFACT_NAME }}/${ARTIFACT_VERSION}/${ARTIFACT_ID}-${ARTIFACT_VERSION}.war"
         
         jf rt set-props "${ARTIFACT_PATH}" \
           "security.sarif.file=${{ env.SARIF_JFROG_NAME }};security.sarif.path=${{ env.JFROG_SECURITY_REPO_NAME }}/${{ env.SARIF_JFROG_NAME }};security.scan.type=codeql;security.scan.language=javascript;security.scan.attestation=${{ steps.attest-codeql.outputs.bundle-path }}"
