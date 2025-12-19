@@ -53,6 +53,9 @@ jobs:
         languages: java
         queries: security-and-quality
 
+    - name: Build (Maven)
+      run: mvn -B -DskipTests package
+
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v4
       with:
