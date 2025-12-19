@@ -386,7 +386,7 @@ jobs:
         SARIF_ARTIFACT_PATH="${{ env.JFROG_SECURITY_REPO_NAME }}/${{ env.SARIF_JFROG_NAME }}"
         
         jf rt set-props "${SARIF_ARTIFACT_PATH}" \
-          "git.commit.sha=${{ github.sha }};git.commit.short=${{ env.SHORT_SHA }};git.branch=${{ github.ref_name }};build.name=${{ env.BUILD_NAME }};build.number=${{ github.run_number }};scan.type=codeql;scan.language=javascript;attestation.codeql.bundle=${{ steps.attest-codeql.outputs.bundle-path }};attestation.github.url=https://github.com/${{ github.repository }}/attestations;attestation.commit=${{ github.sha }};attestation.sigstore.enabled=true;related.artifact=${{ env.TARBALL_PATH }};related.package.repo=${{ env.JFROG_REPO_NAME }}"
+          "git.commit.sha=${{ github.sha }};git.commit.short=${{ env.SHORT_SHA }};git.branch=${{ github.ref_name }};build.name=${{ env.BUILD_NAME }};build.number=${{ github.run_number }};scan.type=codeql;scan.language=javascript;attestation.codeql.bundle=${{ steps.attest-codeql.outputs.bundle-path }};attestation.github.url=https://github.com/${{ github.repository }}/attestations;attestation.commit=${{ github.sha }};attestation.sigstore.enabled=true;related.artifact=${{ env.ARTIFACT_FILENAME }};related.package.repo=${{ env.JFROG_REPO_NAME }}"
         
         echo "✓ CodeQL attestation metadata added to SARIF in JFrog"
         echo "✓ SARIF file location: ${SARIF_ARTIFACT_PATH}"
