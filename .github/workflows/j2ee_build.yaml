@@ -407,7 +407,7 @@ jobs:
         # Use cyclonedx-maven-plugin if available, otherwise generate from dependency tree
         mvn org.cyclonedx:cyclonedx-maven-plugin:makeBom \
           -DoutputFormat=json \
-          -DoutputFile="${SBOM_JFROG_NAME}" 2>/dev/null || {
+          -DoutputName="${SBOM_JFROG_NAME}" 2>/dev/null || {
           
           # Fallback: Generate simple SBOM from POM
           echo "Generating SBOM from pom.xml..."
@@ -436,7 +436,7 @@ jobs:
       id: attest-sbom
       uses: actions/attest@v2
       with:
-        subject-path: '${{ env.SBOM_JFROG_NAME }}'
+        subject-path: 
         predicate-type: 'https://cyclonedx.org/bom'
         predicate: |
           {
