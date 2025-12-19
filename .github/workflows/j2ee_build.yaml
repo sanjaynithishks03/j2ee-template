@@ -303,27 +303,13 @@ jobs:
 
     - name: Add attestation metadata to JFrog artifact
       run: |
-        # Construct full artifact path
-        GROUP_ID=$(mvn help:evaluate -Dexpression=project.groupId -q -DforceStdout)
-        GROUP_PATH=$(echo "${GROUP_ID}" | tr '.' '/')
-        ARTIFACT_PATH="${{ env.JFROG_REPO_NAME }}/${GROUP_PATH}/${{ env.ARTIFACT_NAME }}/${{ steps.artifact-info.outputs.artifact_version }}/${{ env.ARTIFACT_FILENAME }}"
-        
-        echo "Setting properties on: ${ARTIFACT_PATH}"
-        jf rt set-props "${ARTIFACT_PATH}" \
-          "git.commit.sha=${{ github.sha }};git.commit.short=${{ env.SHORT_SHA }};git.branch=${{ github.ref_name }};build.name=${{ env.BUILD_NAME }};build.number=${{ github.run_number }};java.version=${{ env.JAVA_VERSION }};attestation.github.url=https://github.com/${{ github.repository }}/attestations;attestation.actor=${{ github.actor }};attestation.trigger=${{ github.event_name }};attestation.commit=${{ github.sha }};attestation.provenance.bundle=${{ steps.attest.outputs.bundle-path }};attestation.actor.bundle=${{ steps.attest-actor.outputs.bundle-path }};attestation.sigstore.enabled=true;security.repo=${{ env.JFROG_SECURITY_REPO_NAME }}"
-        
-        echo "✓ Attestation metadata added to artifact in JFrog"
-        echo "  Artifact: ${ARTIFACT_PATH}"
-        echo "  Git SHA: ${{ env.SHORT_SHA }}"
-        echo "  Build: ${{ env.BUILD_NAME }}/${{ github.run_number }}"
-
-    - name: Add attestation metadata to JFrog artifact
-      run: |
         # Add properties to the uploaded artifact in JFrog (using npm publish path structure)
         GROUP_ID=$(mvn help:evaluate -Dexpression=project.groupId -q -DforceStdout)
         GROUP_PATH=$(echo "${GROUP_ID}" | tr '.' '/')
-        ARTIFACT_PATH="${{ env.JFROG_REPO_NAME }}/${GROUP_PATH}/${{ env.ARTIFACT_NAME }}/${{ steps.artifact-info.outputs.artifact_version }}/${{ env.ARTIFACT_FILENAME }}"
-        
+        ARTIFACT_ID=$(mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout)
+        ARTIFACT_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+        ARTIFACT_PATH="${{ env.JFROG_REPO_NAME }}/${GROUP_PATH}/${{ env.ARTIFACT_NAME }}/${ARTIFACT_VERSION}/${ARTIFACT_ID}-${ARTIFACT_VERSION}.war"
+
         echo "Setting properties on: ${ARTIFACT_PATH}"
         jf rt set-props "${ARTIFACT_PATH}" \
           "git.commit.sha=${{ github.sha }};git.commit.short=${{ env.SHORT_SHA }};git.branch=${{ github.ref_name }};build.name=${{ env.BUILD_NAME }};build.number=${{ github.run_number }};attestation.github.url=https://github.com/${{ github.repository }}/attestations;attestation.actor=${{ github.actor }};attestation.trigger=${{ github.event_name }};attestation.commit=${{ github.sha }};attestation.provenance.bundle=${{ steps.attest.outputs.bundle-path }};attestation.actor.bundle=${{ steps.attest-actor.outputs.bundle-path }};attestation.sigstore.enabled=true;security.repo=${{ env.JFROG_SECURITY_REPO_NAME }}"
