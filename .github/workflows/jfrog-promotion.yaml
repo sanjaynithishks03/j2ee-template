@@ -150,13 +150,13 @@ jobs:
         echo "Current stage: ${stage}"
         
         # Define valid promotion path
-        declare -A valid_path=( ["BUILD"]="DEV" ["DEV"]="QA" ["QA"]="UAT" ["UAT"]="PROD" )
+        declare -A valid_path=(["DEV"]="QA" ["QA"]="UAT" ["UAT"]="PROD" )
         next_stage="${valid_path[$stage]}"
         
         # Validate promotion path
         if [ -z "$next_stage" ]; then
           echo "❌ ERROR: Unknown current stage '$stage'"
-          echo "Valid stages: BUILD, DEV, QA, UAT, PROD"
+          echo "Valid stages: DEV, QA, UAT, PROD"
           exit 1
         fi
         
@@ -167,7 +167,6 @@ jobs:
           echo "   Expected next stage: $next_stage"
           echo ""
           echo "Valid promotion paths:"
-          echo "  BUILD → DEV"
           echo "  DEV → QA"
           echo "  QA → UAT"
           echo "  UAT → PROD"
