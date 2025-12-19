@@ -53,16 +53,6 @@ jobs:
         languages: java
         queries: security-and-quality
 
-    - name: Build (Maven)
-      run: mvn -B -DskipTests package
-
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v4
-      with:
-        category: "/language:java"
-        output: codeql-results
-        upload: false
-
     - name: Setup build name and JFrog repository name
       id: setup-build-env
       run: |
@@ -252,27 +242,6 @@ jobs:
         echo "✓ Published artifact downloaded successfully"
         ls -lh "${DOWNLOADED_FILE}"
 
-    # - name: Download published artifact for attestation
-    #   run: |
-    #     # Construct the artifact path in JFrog
-    #     # Maven repository structure: groupId/artifactId/version/artifactId-version.{war,jar}
-    #     GROUP_ID=$(mvn help:evaluate -Dexpression=project.groupId -q -DforceStdout)
-    #     GROUP_PATH=$(echo "${GROUP_ID}" | tr '.' '/')
-        
-    #     JFROG_ARTIFACT_PATH="${{ env.JFROG_REPO_NAME }}/${GROUP_PATH}/${{ env.ARTIFACT_NAME }}/${{ steps.artifact-info.outputs.artifact_version }}/${{ env.ARTIFACT_FILENAME }}"
-        
-    #     echo "Downloading published artifact from: ${JFROG_ARTIFACT_PATH}"
-        
-    #     jf rt download "${JFROG_ARTIFACT_PATH}" . --flat
-        
-    #     if [ ! -f "${{ env.ARTIFACT_FILENAME }}" ]; then
-    #       echo "❌ Failed to download published artifact"
-    #       exit 1
-    #     fi
-        
-    #     echo "✓ Published artifact downloaded for attestation"
-    #     ls -lh ${{ env.ARTIFACT_FILENAME }}
-
     - name: Attest artifact with GitHub
       id: attest
       uses: actions/attest-build-provenance@v3
@@ -318,6 +287,13 @@ jobs:
         echo "  Artifact: ${ARTIFACT_PATH}"
         echo "  Git SHA: ${{ env.SHORT_SHA }}"
         echo "  Build: ${{ env.BUILD_NAME }}/${{ github.run_number }}"
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v4
+      with:
+        category: "/language:java"
+        output: codeql-results
+        upload: false
 
     - name: Find CodeQL SARIF results
       id: sarif-info
