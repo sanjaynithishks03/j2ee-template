@@ -405,7 +405,7 @@ jobs:
         echo "Generating SBOM in CycloneDX format..."
         
         # Use cyclonedx-maven-plugin if available, otherwise generate from dependency tree
-        mvn org.cyclonedx:cyclonedx-maven-plugin:generate \
+        mvn org.cyclonedx:cyclonedx-maven-plugin:makeBom \
           -DoutputFormat=json \
           -DoutputFile="${SBOM_JFROG_NAME}" 2>/dev/null || {
           
