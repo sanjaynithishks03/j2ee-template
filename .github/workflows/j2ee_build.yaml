@@ -456,7 +456,7 @@ jobs:
 
     - name: Upload SBOM to JFrog
       run: |
-        jf rt upload "${{ env.SBOM_JFROG_NAME }}" "${{ env.JFROG_SECURITY_REPO_NAME }}/" \
+        jf rt upload "${{ env.SBOM_JFROG_NAME }}.json" "${{ env.JFROG_SECURITY_REPO_NAME }}/" \
           --build-name=${{ env.BUILD_NAME }} \
           --build-number=${{ github.run_number }} \
           --module=${{ env.BUILD_NAME }}-security
@@ -465,7 +465,7 @@ jobs:
 
     - name: Add SBOM attestation metadata to JFrog
       run: |
-        SBOM_ARTIFACT_PATH="${{ env.JFROG_SECURITY_REPO_NAME }}/${{ env.SBOM_JFROG_NAME }}"
+        SBOM_ARTIFACT_PATH="${{ env.JFROG_SECURITY_REPO_NAME }}/${{ env.SBOM_JFROG_NAME }}.json"
         
         jf rt set-props "${SBOM_ARTIFACT_PATH}" \
           "git.commit.sha=${{ github.sha }};git.commit.short=${{ env.SHORT_SHA }};git.branch=${{ github.ref_name }};build.name=${{ env.BUILD_NAME }};build.number=${{ github.run_number }};sbom.format=cyclonedx;sbom.type=software-bill-of-materials;attestation.sbom.bundle=${{ steps.attest-sbom.outputs.bundle-path }};attestation.github.url=https://github.com/${{ github.repository }}/attestations;attestation.commit=${{ github.sha }};attestation.sigstore.enabled=true;related.artifact=${{ env.ARTIFACT_FILENAME }};related.artifact.repo=${{ env.JFROG_REPO_NAME }}"
