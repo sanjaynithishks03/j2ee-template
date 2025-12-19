@@ -223,7 +223,7 @@ jobs:
           echo "Expected path: ${JFROG_ARTIFACT_PATH}"
           echo ""
           echo "Troubleshooting steps:"
-          echo "
+          echo ""
 
     # - name: Download published artifact for attestation
     #   run: |
